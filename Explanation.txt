@@ -1,0 +1,188 @@
+import sys
+import cv2
+import logging
+import os
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QHBoxLayout, QFileDialog, QCheckBox, QScrollArea, QGridLayout, QMessageBox, QFrame, QSlider
+from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtCore import QTimer, Qt
+
+In this code the imports are essential for the functionality of the Python script, as they provide access to necessary libraries and modules required for image processing, logging, and building GUIs using PyQt5.
+
+class VideoPlayer(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.threshold_slider = QSlider(Qt.Horizontal)
+        self.setup_ui()
+
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_frame)
+        self.cap = None
+        self.is_webcam_running = False
+        self.is_grayscale = False
+        self.is_edge_detection = False
+        self.total_frames = 0
+        self.is_video_uploaded = False
+        self.is_playing = True
+        self.is_blurring = False
+        self.edge_detection_threshold = 1
+        self.blurring_intensity = 1
+
+Here the code defines a class called VideoPlayer, which is a widget for playing video. It has attributes for managing various aspects of video playback and processing, such as sliders for threshold adjustment, a timer for updating frames, flags for indicating whether a webcam is running, whether the video is grayscale, whether edge detection or blurring is enabled, and parameters for edge detection and blurring intensity. Overall, this class serves as a container for managing video-related functionalities within a PyQt5-based GUI application.
+
+    def setup_ui(self):
+        layout = QHBoxLayout()
+        left_layout = QVBoxLayout()
+
+        self.start_webcam_button = QPushButton("Start Webcam")
+        self.start_webcam_button.clicked.connect(self.start_stop_webcam)
+        self.upload_video_button = QPushButton("Upload Video")
+        self.upload_video_button.clicked.connect(self.upload_video)
+        left_layout.addWidget(self.start_webcam_button)
+        left_layout.addWidget(self.upload_video_button)
+        self.video_frame = QLabel()
+        left_layout.addWidget(self.video_frame)
+
+        self.start_stop_button = QPushButton("Start / Stop")
+        self.start_stop_button.clicked.connect(self.toggle_start_stop)
+        left_layout.addWidget(self.start_stop_button)
+
+        self.grayscale_checkbox = QCheckBox("Grayscale")
+        self.grayscale_checkbox.stateChanged.connect(self.toggle_grayscale)
+        left_layout.addWidget(self.grayscale_checkbox)
+
+        self.edge_detection_checkbox = QCheckBox("Edge Detection")
+        self.edge_detection_checkbox.stateChanged.connect(self.toggle_edge_detection)
+        left_layout.addWidget(self.edge_detection_checkbox)
+
+        self.edge_detection_slider = QSlider(Qt.Horizontal)
+        self.edge_detection_slider.setRange(-10000,400)
+        self.edge_detection_slider.setValue(-10000)
+        self.edge_detection_slider.setTickInterval(10)
+        self.edge_detection_slider.setTickPosition(QSlider.TicksBelow)
+        self.edge_detection_slider.valueChanged.connect(self.edge_detection_threshold)
+        left_layout.addWidget(self.edge_detection_slider)
+
+        self.blurring_checkbox = QCheckBox("Blurring")
+        self.blurring_checkbox.stateChanged.connect(self.toggle_blurring)
+        left_layout.addWidget(self.blurring_checkbox)
+
+        self.blurring_slider = QSlider(Qt.Horizontal)
+        self.blurring_slider.setRange(-1000, 1000)
+        self.blurring_slider.setValue(0)
+        self.blurring_slider.setTickInterval(10)
+        self.blurring_slider.setTickPosition(QSlider.TicksBelow)
+        self.blurring_slider.valueChanged.connect(self.blurring_intensity)
+        left_layout.addWidget(self.blurring_slider)
+
+        layout.addLayout(left_layout)
+
+        right_layout = QVBoxLayout()
+        self.frame_gallery = QWidget()
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setWidget(self.frame_gallery)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        frame_gallery_layout = QGridLayout()
+        self.frame_gallery.setLayout(frame_gallery_layout)
+
+        right_layout.addWidget(self.scroll_area)
+
+        self.total_frames_label = QLabel("Total Frames: 0")
+        right_layout.addWidget(self.total_frames_label)
+
+        self.save_frames_button = QPushButton("Save Frames")
+        self.save_frames_button.clicked.connect(self.save_frames)
+        right_layout.addWidget(self.save_frames_button)
+
+        self.clear_frames_button = QPushButton("Clear Frames")
+        self.clear_frames_button.clicked.connect(self.clear_frames)
+        right_layout.addWidget(self.clear_frames_button)
+
+        layout.addLayout(right_layout)
+
+        self.setLayout(layout)
+
+The setup_ui method within the VideoPlayer class meticulously orchestrates the construction of the graphical user interface (GUI) for the video player application. The method meticulously divides the interface into two distinct sections, the left and right panels, each tailored to specific functionalities and visualizations.
+
+Beginning with the left panel, it encapsulates a variety of controls enabling the user to interact with video sources and manipulate processing parameters. These controls include buttons for initiating webcam capture and uploading videos, as well as toggles for activating grayscale conversion, edge detection, and blurring effects. Accompanying these toggles are corresponding sliders allowing fine-grained adjustments to parameters such as edge detection threshold and blurring intensity, thus affording users precise control over the visual output of their video streams. Each control is thoughtfully linked to its corresponding function, ensuring seamless integration of user interactions with application logic.
+
+On the right panel, the focus shifts towards visualizing the video frames and providing utilities for managing frame data. A scrollable area is allocated for displaying multiple frames, facilitating easy navigation through captured or processed frames. Additionally, a label dynamically updates to reflect the total number of frames processed, offering users valuable feedback on the progress of their video analysis. To empower users with the ability to preserve or discard frame data as desired, dedicated buttons for saving and clearing frames are provided. These buttons are intricately connected to their respective functions, enabling users to effortlessly archive noteworthy frames or declutter the interface when necessary.
+
+start_stop_webcam(self)
+
+The start_stop_webcam method within the VideoPlayer class encapsulates the functionality to initiate or terminate webcam capture. When invoked, the method first checks the current state of webcam capture. If the webcam is not running, it initializes the webcam capture using OpenCV's VideoCapture function, setting the camera index to 0 (typically the primary webcam). It then starts a timer with a 30-millisecond interval to periodically update the displayed video frames. Subsequently, it updates the internal flag is_webcam_running to indicate that the webcam is now active and modifies the text of the start_webcam_button to reflect the action to stop the webcam.
+
+Conversely, if the webcam is already running, the method releases the webcam capture instance, stops the timer, resets the is_webcam_running flag to indicate that the webcam is no longer active, and updates the text of the start_webcam_button to indicate the action to start the webcam. Additionally, it clears the video_frame to remove any displayed frames, ensuring a clean interface when the webcam capture is stopped.
+
+upload_video(self)
+
+The upload_video method within the VideoPlayer class facilitates the selection and playback of video files from the local filesystem. Upon invocation, the method prompts the user to select a video file using a file dialog provided by the QFileDialog class. The dialog restricts file selection to specific video file formats, including .mp4, .avi, and .mkv, enhancing user experience by guiding them to select compatible files.
+
+If a valid video file is selected (i.e., the filename is not empty), the method initializes video capture using OpenCV's VideoCapture function, passing the selected filename as the input source. Subsequently, it starts a timer with a 30-millisecond interval to periodically update the displayed video frames, ensuring smooth playback of the uploaded video. Additionally, the method sets the is_video_uploaded flag to true, indicating that a video file has been successfully uploaded and is being processed for playback.
+
+toggle_start_stop(self)
+
+The toggle_start_stop method within the VideoPlayer class serves to toggle the playback state of the video source, whether it's a live webcam feed or an uploaded video file.
+
+When invoked, the method first checks the current state of the video source. If the webcam is currently running (self.is_webcam_running is True), it further examines the playback state (self.is_playing). If the video is currently playing, it stops the video capture by releasing the webcam instance and sets self.is_playing to False, effectively pausing the video. Conversely, if the video is paused, it re-initializes the webcam capture, starts the timer for frame updates, and sets self.is_playing to True, resuming the video playback.
+
+If no webcam is running but a video has been uploaded (self.is_video_uploaded is True), the method follows a similar logic to toggle the playback state. If the video is playing, it stops the timer and sets self.is_playing to False, effectively pausing the video. Conversely, if the video is paused, it starts the timer for frame updates and sets self.is_playing to True, resuming the video playback.
+
+toggle_grayscale(self, state)
+toggle_edge_detection(self, state)
+edge_detection_threshold(self, value)
+toggle_blurring(self, state)
+blurring_intensity(self, value)
+
+toggle_grayscale: This function toggles grayscale mode based on the state of the checkbox. If the checkbox is checked ('state == Qt.Checked'), it sets the 'is_grayscale' attribute to True, indicating that grayscale mode should be enabled.
+
+toggle_edge_detection: Similarly, this function toggles edge detection based on the state of the checkbox. If the checkbox is checked, it sets the 'is_edge_detection' attribute to True, indicating that edge detection should be enabled.
+
+edge_detection_threshold: This function updates the threshold value for edge detection based on the provided slider value. It simply assigns the provided value to the 'edge_detection_threshold' attribute, allowing users to adjust the threshold for edge detection.
+
+toggle_blurring: This function toggles blurring based on the state of the checkbox. If the checkbox is checked, it sets the 'is_blurring' attribute to True, indicating that blurring should be enabled.
+
+blurring_intensity: Similarly to the 'edge_detection_threshold' function, this function updates the intensity of blurring based on the provided slider value. It assigns the provided value to the 'blurring_intensity' attribute, allowing users to adjust the intensity of blurring effects.
+
+update_frame(self)
+
+Reading the Frame: It reads a frame from the video source (either webcam or uploaded video) using the cap.read() method. The return value ret indicates whether a frame was successfully read, and frame contains the actual frame data.
+
+Processing the Frame: Depending on the selected image processing options (grayscale, edge detection, blurring), the method applies corresponding transformations to the frame using OpenCV functions (cv2.cvtColor(), cv2.Canny(), cv2.GaussianBlur()). These transformations modify the appearance of the frame to achieve the desired visual effects.
+
+Converting Frame Format: The frame is converted from the BGR color space to the RGB color space using cv2.cvtColor() to ensure compatibility with Qt's image display requirements.
+
+Creating a QPixmap: The processed frame data is used to create a QPixmap object, which is a representation of an image that can be displayed within a Qt application.
+
+Updating the Video Frame Widget: The QPixmap is set as the pixmap for the video_frame QLabel widget, which is responsible for displaying the video feed within the application interface.
+
+Updating Frame Gallery: A smaller version of the frame is created and added to the frame gallery layout, enabling users to visualize multiple frames simultaneously. This enhances the user experience by providing a comprehensive view of the video stream's content.
+
+Updating Total Frames Label: The total number of frames processed is updated and displayed in the total_frames_label, providing users with real-time feedback on the progress of video playback.
+
+Stopping the Timer: If no frame is read (indicating the end of the video stream), the timer is stopped to halt further frame updates, ensuring the application does not attempt to read frames beyond the end of the video.
+
+save_frames(self)
+
+The save_frames method provides users with a convenient way to export displayed frames as image files, facilitating further analysis or sharing of captured video content. The method ensures a smooth and user-friendly experience by handling various scenarios, such as selecting a folder, checking for available frames, and appropriately naming and saving the frames. Additionally, it incorporates error handling to maintain the robustness of the application.
+
+clear_frames(self)
+
+The clear_frames method provides users with a straightforward way to remove all displayed frames from the interface, allowing for a clean slate when needed. By resetting the total frames count and updating the interface accordingly, the method ensures consistency and usability within the application.
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = VideoPlayer()
+    window.setWindowTitle("Video Player")
+    window.setGeometry(0, 0, 1900, 1000)
+    window.show()
+    sys.exit(app.exec_())
+
+In the main section of the script, the code initializes a QApplication object, which manages the GUI application's control flow. It then creates an instance of the VideoPlayer class, representing the main window of the application.
+
+The window's title is set to "Video Player" using the setWindowTitle method, and its size and position on the screen are configured using the setGeometry method.
+
+The window is displayed to the user using the show method, making it visible on the screen.
+
+Finally, the sys.exit(app.exec_()) call starts the application's event loop, allowing it to respond to user interactions and system events. The application will continue running until the user closes the window, at which point the sys.exit function is called to terminate the application's execution.
